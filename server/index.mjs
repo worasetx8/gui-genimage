@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import OpenAI from "openai";
+import sharp from "sharp";
 
 import multer from "multer";
 import fs from "fs";
@@ -23,6 +24,14 @@ function mapAspectToSize(aspectRatio) {
   if (aspectRatio === "4:5") return "1024x1536"; // closest; you can crop later
   return "auto";
 }
+
+async function toPngPath(uploadedFile) {
+    // multer gives: { path, originalname, mimetype, ... }
+    // Convert anything to PNG and return new file path.
+    const outPath = `${uploadedFile.path}.png`;
+    await sharp(uploadedFile.path).png().toFile(outPath);
+    return outPath;
+  }
 
 app.post("/api/generate", async (req, res) => {
   try {
@@ -102,13 +111,18 @@ app.post("/api/generate-ref", upload.any(), async (req, res) => {
         const outfitFile = getUpload(outfitName);
         const objFile = object ? getUpload(object) : null;
   
+        const facePng = await toPngPath(faceFile);
+        const posePng = await toPngPath(poseFile);
+        const outfitPng = await toPngPath(outfitFile);
+        const objPng = objFile ? await toPngPath(objFile) : null;
+        
+        // IMPORTANT: attach with correct filename so server sets proper content-type
         const images = [
-          fs.createReadStream(faceFile.path),
-          fs.createReadStream(poseFile.path),
-          fs.createReadStream(outfitFile.path),
+          fs.createReadStream(facePng),
+          fs.createReadStream(posePng),
+          fs.createReadStream(outfitPng),
         ];
-        if (objFile) images.push(fs.createReadStream(objFile.path));
-  
+        if (objPng) images.push(fs.createReadStream(objPng));
         const strictPrompt =
           prompt +
           "\n\nSTRICT RULES:\n" +
